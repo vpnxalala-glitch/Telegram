@@ -9,15 +9,17 @@ import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import org.telegram.messenger.LocaleController;
 import org.telegram.messenger.R;
+import org.telegram.messenger.VichGramMessageStore;
 import org.telegram.messenger.VichGramPrefs;
 import org.telegram.ui.ActionBar.ActionBar;
+import org.telegram.ui.ActionBar.AlertDialog;
 import org.telegram.ui.ActionBar.BaseFragment;
 import org.telegram.ui.ActionBar.Theme;
 import org.telegram.ui.Cells.HeaderCell;
 import org.telegram.ui.Cells.TextCheckCell;
 import org.telegram.ui.Cells.TextInfoPrivacyCell;
+import org.telegram.ui.Cells.TextSettingsCell;
 import org.telegram.ui.Components.LayoutHelper;
 import org.telegram.ui.Components.RecyclerListView;
 
@@ -25,17 +27,19 @@ import java.util.ArrayList;
 
 /**
  * VichGram: Settings → Функции
- * Structure: section header → toggle button → explanation.
  */
 public class VichGramFeaturesActivity extends BaseFragment {
 
     private static final int VIEW_HEADER = 0;
     private static final int VIEW_CHECK = 1;
     private static final int VIEW_INFO = 2;
+    private static final int VIEW_SETTINGS = 3;
 
     private static final int ID_HEADER_WATCH = 1;
     private static final int ID_DELETED = 2;
     private static final int ID_DELETED_INFO = 3;
+    private static final int ID_CLEAR_DELETED = 6;
+    private static final int ID_CLEAR_INFO = 7;
     private static final int ID_EDITS = 4;
     private static final int ID_EDITS_INFO = 5;
 
@@ -86,6 +90,8 @@ public class VichGramFeaturesActivity extends BaseFragment {
                 if (view instanceof TextCheckCell) {
                     ((TextCheckCell) view).setChecked(next);
                 }
+            } else if (item.id == ID_CLEAR_DELETED) {
+                showClearDeletedConfirm();
             }
         });
 
@@ -93,17 +99,37 @@ public class VichGramFeaturesActivity extends BaseFragment {
         return fragmentView;
     }
 
+    private void showClearDeletedConfirm() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle("Очистить");
+        builder.setMessage("Вы точно хотите очистить? Согласившись, ваши удалённые сообщения пропадут безвозвратно.");
+        builder.setPositiveButton("Очистить", (dialog, which) -> {
+            VichGramMessageStore.clearAllDeleted();
+            if (getParentActivity() != null) {
+                org.telegram.ui.Components.BulletinFactory.of(this)
+                        .createSimpleBulletin(R.raw.chats_infotip, "Удалённые сообщения очищены")
+                        .show();
+            }
+        });
+        builder.setNegativeButton("Отмена", null);
+        showDialog(builder.create());
+    }
+
     private void rebuildItems() {
         items.clear();
-        // Раздел
         items.add(new Item(VIEW_HEADER, ID_HEADER_WATCH, "Смотреть"));
-        // Кнопка + пояснение
         items.add(new Item(VIEW_CHECK, ID_DELETED, "Удалённые сообщения"));
         items.add(new Item(VIEW_INFO, ID_DELETED_INFO,
-                "Если включено, VichGram будет сохранять и показывать сообщения, которые собеседник удалил."));
+                "Если включено, VichGram сохраняет и показывает сообщения, которые собеседник удалил."));
+        items.add(new Item(VIEW_SETTINGS, ID_CLEAR_DELETED, "Очистить"));
+        items.add(new Item(VIEW_INFO, ID_CLEAR_INFO,
+                "Удаляет все сохранённые удалённые сообщения с устройства."));
         items.add(new Item(VIEW_CHECK, ID_EDITS, "Изменения сообщений"));
         items.add(new Item(VIEW_INFO, ID_EDITS_INFO,
-                "Если включено, VichGram будет показывать, как сообщение выглядело до редактирования."));
+                "Если включено, VichGram показывает, как сообщение выглядело до редактирования. Нажмите на время сообщения, чтобы открыть историю."));
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }
@@ -124,7 +150,8 @@ public class VichGramFeaturesActivity extends BaseFragment {
     private class ListAdapter extends RecyclerListView.SelectionAdapter {
         @Override
         public boolean isEnabled(RecyclerView.ViewHolder holder) {
-            return holder.getItemViewType() == VIEW_CHECK;
+            int t = holder.getItemViewType();
+            return t == VIEW_CHECK || t == VIEW_SETTINGS;
         }
 
         @NonNull
@@ -135,6 +162,8 @@ public class VichGramFeaturesActivity extends BaseFragment {
                 view = new HeaderCell(getContext());
             } else if (viewType == VIEW_CHECK) {
                 view = new TextCheckCell(getContext());
+            } else if (viewType == VIEW_SETTINGS) {
+                view = new TextSettingsCell(getContext());
             } else {
                 view = new TextInfoPrivacyCell(getContext());
             }
@@ -147,8 +176,7 @@ public class VichGramFeaturesActivity extends BaseFragment {
             if (holder.getItemViewType() == VIEW_HEADER) {
                 ((HeaderCell) holder.itemView).setText(item.text);
             } else if (holder.getItemViewType() == VIEW_INFO) {
-                TextInfoPrivacyCell cell = (TextInfoPrivacyCell) holder.itemView;
-                cell.setText(item.text);
+                ((TextInfoPrivacyCell) holder.itemView).setText(item.text);
             } else if (holder.getItemViewType() == VIEW_CHECK) {
                 TextCheckCell cell = (TextCheckCell) holder.itemView;
                 boolean checked = false;
@@ -159,6 +187,11 @@ public class VichGramFeaturesActivity extends BaseFragment {
                 }
                 boolean divider = position + 1 < items.size() && items.get(position + 1).viewType == VIEW_CHECK;
                 cell.setTextAndCheck(item.text.toString(), checked, divider);
+            } else if (holder.getItemViewType() == VIEW_SETTINGS) {
+                TextSettingsCell cell = (TextSettingsCell) holder.itemView;
+                boolean divider = position + 1 < items.size() && items.get(position + 1).viewType == VIEW_SETTINGS;
+                cell.setText(item.text.toString(), divider);
+                cell.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
             }
         }
 

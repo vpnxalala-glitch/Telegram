@@ -6,10 +6,12 @@ import android.text.TextUtils;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
+import org.telegram.tgnet.TLRPC;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Local persistence for VichGram features:
@@ -20,7 +22,7 @@ public final class VichGramMessageStore {
 
     private static final String PREFS = "vichgram_msg_store";
     private static final int MAX_EDITS_PER_MSG = 20;
-    private static final int MAX_DELETED_GLOBAL = 500;
+    private static final int MAX_DELETED_PER_DIALOG = 500;
 
     private VichGramMessageStore() {}
 
@@ -64,7 +66,6 @@ public final class VichGramMessageStore {
             o.put("savedAt", System.currentTimeMillis());
             prefs().edit().putString(delKey(account, dialogId, msgId), o.toString()).apply();
 
-            // index of deleted ids per dialog
             String idxKey = delIndexKey(account, dialogId);
             JSONArray arr;
             try {
@@ -81,9 +82,10 @@ public final class VichGramMessageStore {
             }
             if (!found) {
                 arr.put(msgId);
-                // trim
-                while (arr.length() > MAX_DELETED_GLOBAL) {
+                while (arr.length() > MAX_DELETED_PER_DIALOG) {
+                    int removeId = arr.optInt(0);
                     arr.remove(0);
+                    prefs().edit().remove(delKey(account, dialogId, removeId)).apply();
                 }
                 prefs().edit().putString(idxKey, arr.toString()).apply();
             }
@@ -121,7 +123,81 @@ public final class VichGramMessageStore {
         }
     }
 
-    /** Save previous text before an edit is applied. */
+    /**
+     * Rebuild a MessageObject from a saved deleted snapshot (text-only).
+     */
+    public static MessageObject restoreDeletedMessage(int account, long dialogId, int msgId) {
+        try {
+            String raw = prefs().getString(delKey(account, dialogId, msgId), null);
+            if (raw == null) {
+                return null;
+            }
+            JSONObject o = new JSONObject(raw);
+            TLRPC.TL_message msg = new TLRPC.TL_message();
+            msg.id = msgId;
+            msg.message = o.optString("text", "");
+            msg.date = o.optInt("date", (int) (System.currentTimeMillis() / 1000));
+            msg.dialog_id = dialogId;
+            msg.out = o.optBoolean("out", false);
+            msg.flags |= TLRPC.MESSAGE_FLAG_HAS_FROM_ID;
+
+            long fromId = o.optLong("fromId", 0);
+            if (fromId != 0) {
+                msg.from_id = MessagesController.getInstance(account).getPeer(fromId);
+            } else if (msg.out) {
+                msg.from_id = MessagesController.getInstance(account).getPeer(UserConfig.getInstance(account).getClientUserId());
+            } else if (dialogId > 0) {
+                msg.from_id = MessagesController.getInstance(account).getPeer(dialogId);
+            }
+
+            if (dialogId > 0) {
+                msg.peer_id = new TLRPC.TL_peerUser();
+                msg.peer_id.user_id = dialogId;
+            } else {
+                msg.peer_id = new TLRPC.TL_peerChannel();
+                msg.peer_id.channel_id = -dialogId;
+            }
+
+            MessageObject mo = new MessageObject(account, msg, false, false);
+            mo.deleted = true;
+            return mo;
+        } catch (Exception e) {
+            FileLog.e(e);
+            return null;
+        }
+    }
+
+    /** Delete all saved deleted-message snapshots (all accounts/dialogs). */
+    public static void clearAllDeleted() {
+        try {
+            SharedPreferences p = prefs();
+            SharedPreferences.Editor ed = p.edit();
+            Map<String, ?> all = p.getAll();
+            for (String key : all.keySet()) {
+                if (key != null && (key.startsWith("del_") || key.startsWith("del_idx_"))) {
+                    ed.remove(key);
+                }
+            }
+            ed.apply();
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+    public static int countDeletedSnapshots() {
+        try {
+            int n = 0;
+            for (String key : prefs().getAll().keySet()) {
+                if (key != null && key.startsWith("del_") && !key.startsWith("del_idx_")) {
+                    n++;
+                }
+            }
+            return n;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     public static void saveEdit(int account, long dialogId, int msgId, String previousText) {
         if (msgId <= 0 || TextUtils.isEmpty(previousText)) {
             return;

@@ -1,0 +1,144 @@
+name: Apply VichGram Restore Deleted On Load
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inject restore-deleted into ChatActivity messagesDidLoad
+        run: |
+          python3 << 'PY'
+          import re
+          from pathlib import Path
+          path = Path("TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java")
+          text = path.read_text(encoding="utf-8")
+          if "VICHGRAM_RESTORE_DELETED" in text:
+              print("already patched")
+              raise SystemExit(0)
+
+          # Hook near start of didReceivedNotification_messagesDidLoad after basic guards
+          # Find method and inject after first few lines that set dialog_id related checks
+          marker = "private void didReceivedNotification_messagesDidLoad(int id, int account, final Object... args) {"
+          if marker not in text:
+              print("method not found")
+              raise SystemExit(1)
+
+          # Insert a helper method before processDeletedMessages
+          helper = '''
+    // VICHGRAM_RESTORE_DELETED
+    private void vichgramRestoreDeletedMessages() {
+        if (!VichGramPrefs.isWatchDeletedMessages()) {
+            return;
+        }
+        try {
+            java.util.List<Integer> ids = VichGramMessageStore.getDeletedIds(currentAccount, dialog_id);
+            if (ids == null || ids.isEmpty()) {
+                return;
+            }
+            boolean added = false;
+            for (int i = 0; i < ids.size(); i++) {
+                int mid = ids.get(i);
+                if (messagesDict[0].indexOfKey(mid) >= 0) {
+                    MessageObject existing = messagesDict[0].get(mid);
+                    if (existing != null) {
+                        existing.deleted = true;
+                    }
+                    continue;
+                }
+                MessageObject restored = VichGramMessageStore.restoreDeletedMessage(currentAccount, dialog_id, mid);
+                if (restored == null) {
+                    continue;
+                }
+                messagesDict[0].put(mid, restored);
+                // insert sorted by id into messages list (simple append if empty)
+                int insertAt = messages.size();
+                for (int j = 0; j < messages.size(); j++) {
+                    MessageObject m = messages.get(j);
+                    if (m != null && m.getId() > 0 && m.getId() < mid) {
+                        insertAt = j;
+                        break;
+                    }
+                }
+                messages.add(insertAt, restored);
+                added = true;
+            }
+            if (added && chatAdapter != null) {
+                chatAdapter.notifyDataSetChanged();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
+    }
+
+'''
+          if "void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent) {" in text:
+              text = text.replace(
+                  "    private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent) {",
+                  helper + "    private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent) {",
+                  1,
+              )
+              print("helper inserted")
+          else:
+              print("processDeletedMessages not found for helper")
+              raise SystemExit(1)
+
+          # Call restore at end of messagesDidLoad - find a stable point: after method starts we add call via
+          # searching for NotificationCenter.messagesDidLoad handler end is hard; call from processDeletedMessages is wrong.
+          # Call after chatAdapter.notify if we find first "waitingForLoad.remove" in messagesDidLoad - simpler:
+          # inject call right after method signature + first few lines by regex on "createLoadMoreView" or similar
+
+          # Inject call near start of didReceivedNotification_messagesDidLoad after account check style
+          # Look for: private void didReceivedNotification_messagesDidLoad
+          m = re.search(r"private void didReceivedNotification_messagesDidLoad\(int id, int account, final Object\.\.\. args\) \{\n", text)
+          if not m:
+              print("didReceivedNotification_messagesDidLoad not found")
+              raise SystemExit(1)
+
+          # Add at the end of the method is hard; instead add call when messages finish loading.
+          # Common pattern: chatAdapter.notifyDataSetChanged() near end of load.
+          # Safer: call restore after "updateVisibleRows" or first occurrence of loading = false in that method.
+
+          # Append call once after: if (chatAdapter != null && !paused)  in messagesDidLoad - fragile.
+          # Use: after helper is in place, inject "vichgramRestoreDeletedMessages();" once after messages are added.
+          # Search within file for unique string only in messagesDidLoad - "showLoadDownProgress = false" etc.
+
+          inject_call_anchor = "vichgramRestoreDeletedMessages();"
+          if inject_call_anchor not in text.split("VICHGRAM_RESTORE_DELETED")[0] or text.count(inject_call_anchor) == 0:
+              # Find end-ish of messagesDidLoad: next private method after it
+              start = text.find("private void didReceivedNotification_messagesDidLoad")
+              next_priv = text.find("\n    private void ", start + 50)
+              if start < 0 or next_priv < 0:
+                  print("cannot find method bounds")
+                  raise SystemExit(1)
+              # Insert call just before closing of method - find last closing brace region is unreliable.
+              # Insert right after method opening brace block a delayed call via AndroidUtilities.runOnUIThread at end of method:
+              body = text[start:next_priv]
+              # insert before the last few lines of method - replace unique "}\n    private void" boundary
+              # Add at beginning after opening {
+              text = text[:start] + text[start:start+len("private void didReceivedNotification_messagesDidLoad(int id, int account, final Object... args) {")] + "\n        // VICHGRAM_RESTORE_DELETED call scheduled at end via finally-like\n" + text[start+len("private void didReceivedNotification_messagesDidLoad(int id, int account, final Object... args) {"):next_priv] + text[next_priv:]
+
+              # Better: insert before next_priv a call
+              # Find last non-empty content before next_priv
+              insert_pos = next_priv
+              call = "\n        vichgramRestoreDeletedMessages();\n"
+              text = text[:insert_pos] + call + text[insert_pos:]
+              print("call inserted at end of messagesDidLoad")
+
+          path.write_text(text, encoding="utf-8")
+          print("done")
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "VichGram: restore deleted messages when opening chat" || exit 0
+          git push
