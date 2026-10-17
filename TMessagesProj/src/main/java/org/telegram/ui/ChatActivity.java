@@ -26431,6 +26431,15 @@ public class ChatActivity extends BaseFragment implements
         for (int a = 0; a < size; a++) {
             Integer mid = markAsDeletedMessages.get(a);
             MessageObject obj = chatAdapter != null && chatAdapter.isFiltered ? filteredMessagesDict.get(mid) :  messagesDict[loadIndex].get(mid);
+  // VICHGRAM_KEEP_DELETED: keep message in chat when feature is on
+  if (VichGramPrefs.isWatchDeletedMessages() && obj != null) {
+      VichGramMessageStore.saveDeleted(currentAccount, obj);
+      obj.deleted = true;
+      if (chatAdapter != null) {
+          chatAdapter.updateRowWithMessageObject(obj, false, false);
+      }
+      continue;
+  }
             if (selectedObject != null && obj == selectedObject || obj != null && selectedObjectGroup != null && selectedObjectGroup == groupedMessagesMap.get(obj.getGroupId())) {
                 closeMenu();
             }
