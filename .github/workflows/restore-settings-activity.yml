@@ -1,6 +1,9 @@
 name: Restore SettingsActivity
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/restore-settings-activity.yml'
 permissions:
   contents: write
 jobs:
@@ -8,21 +11,58 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Decode and restore SettingsActivity.java
+        with:
+          fetch-depth: 0
+
+      - name: Restore SettingsActivity from good commit and add Features entry
         run: |
+          set -e
+          GOOD=2f286f864e2b7d68cc2c2d5cb62c57ab75489661
+          TARGET=TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+          git show "$GOOD:$TARGET" > "$TARGET"
+
           python3 << 'PY'
-          import base64, zlib, pathlib
-          b64 = pathlib.Path("tools/SettingsActivity.java.zlib.b64").read_text().strip()
-          data = zlib.decompress(base64.b64decode(b64))
-          path = pathlib.Path("TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java")
-          path.write_bytes(data)
-          print("restored", len(data), "bytes")
+          from pathlib import Path
+          path = Path("TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java")
+          text = path.read_text(encoding="utf-8")
+          needle = 'items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));'
+          insert = needle + '\n        items.add(SettingCell.Factory.of(30, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_features, "Функции", "Удалённые и изменённые сообщения"));'
+          if 'Factory.of(30,' not in text:
+              if needle not in text:
+                  raise SystemExit('needle1 not found')
+              text = text.replace(needle, insert, 1)
+          case_needle = '''            case 24: {
+                presentFragment(new RoundVideoSettingsActivity());
+                break;
+            }
+        }
+    }'''
+          case_insert = '''            case 24: {
+                presentFragment(new RoundVideoSettingsActivity());
+                break;
+            }
+            case 30: {
+                presentSettingFragment(new VichGramFeaturesActivity());
+                break;
+            }
+        }
+    }'''
+          if 'case 30:' not in text:
+              if case_needle not in text:
+                  raise SystemExit('case needle not found')
+              text = text.replace(case_needle, case_insert, 1)
+          path.write_text(text, encoding='utf-8')
+          print('patched ok', len(text))
           PY
-      - name: Commit if changed
+
+      - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-          git diff --cached --quiet && echo "no changes" && exit 0
-          git commit -m "Restore full SettingsActivity with VichGram Features entry"
+          if git diff --cached --quiet; then
+            echo "no changes"
+            exit 0
+          fi
+          git commit -m "Restore full SettingsActivity + VichGram Features menu entry"
           git push
