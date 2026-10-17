@@ -1,6 +1,6 @@
 /*
  * Based on Telegram for Android (GNU GPL v. 2 or later).
- * VichGram fork: APP_ID / APP_HASH from BuildConfig (CI secrets).
+ * VichGram fork.
  */
 
 package org.telegram.messenger;
@@ -23,9 +23,8 @@ public class BuildVars {
     public static boolean NO_SCOPED_STORAGE = Build.VERSION.SDK_INT <= 29;
     public static String BUILD_VERSION_STRING = BuildConfig.BUILD_VERSION_STRING;
 
-    // VichGram: from BuildConfig (secrets VICHGRAM_TG_API_ID / VICHGRAM_TG_API_HASH at build time)
-    public static int APP_ID = BuildConfig.TELEGRAM_API_ID;
-    public static String APP_HASH = BuildConfig.TELEGRAM_API_HASH;
+    public static int APP_ID = 4;
+    public static String APP_HASH = "014b35b6184100b085b0d0572f9b5103";
 
     public static String SAFETYNET_KEY = "";
     public static String PLAYSTORE_APP_URL = "https://github.com/vpnxalala-glitch/Telegram";
