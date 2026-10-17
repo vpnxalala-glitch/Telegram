@@ -102,36 +102,33 @@ dependencies {
     api project(":TMessagesProj_Modules:media3:media-lib-session")
     api project(':jlatexmath')
 
-//    implementation 'com.google.mlkit:translate:17.0.3'
-
     implementation 'com.google.android.recaptcha:recaptcha:18.7.1'
 
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 
-// Toloram: API credentials from env (CI secrets) or gradle properties / local.properties
-def toloramApiId = {
-    def v = System.getenv("TOLORAM_TG_API_ID") ?: System.getenv("VICHGRAM_TG_API_ID")
+// VichGram: API credentials from env (CI secrets) or local.properties
+def vichgramApiId = {
+    def v = System.getenv("VICHGRAM_TG_API_ID")
     if (v == null || v.trim().isEmpty()) {
-        v = project.findProperty("TOLORAM_TG_API_ID") ?: project.findProperty("VICHGRAM_TG_API_ID")
+        v = project.findProperty("VICHGRAM_TG_API_ID")
     }
     if ((v == null || v.toString().trim().isEmpty()) && rootProject.file('local.properties').exists()) {
         def props = new Properties()
         props.load(new FileInputStream(rootProject.file('local.properties')))
-        v = props.getProperty("TOLORAM_TG_API_ID") ?: props.getProperty("VICHGRAM_TG_API_ID")
+        v = props.getProperty("VICHGRAM_TG_API_ID")
     }
-    def n = (v ?: "0").toString().trim().toInteger()
-    return n
+    return (v ?: "0").toString().trim().toInteger()
 }()
-def toloramApiHash = {
-    def v = System.getenv("TOLORAM_TG_API_HASH") ?: System.getenv("VICHGRAM_TG_API_HASH")
+def vichgramApiHash = {
+    def v = System.getenv("VICHGRAM_TG_API_HASH")
     if (v == null || v.trim().isEmpty()) {
-        v = project.findProperty("TOLORAM_TG_API_HASH") ?: project.findProperty("VICHGRAM_TG_API_HASH")
+        v = project.findProperty("VICHGRAM_TG_API_HASH")
     }
     if ((v == null || v.toString().trim().isEmpty()) && rootProject.file('local.properties').exists()) {
         def props = new Properties()
         props.load(new FileInputStream(rootProject.file('local.properties')))
-        v = props.getProperty("TOLORAM_TG_API_HASH") ?: props.getProperty("VICHGRAM_TG_API_HASH")
+        v = props.getProperty("VICHGRAM_TG_API_HASH")
     }
     return (v ?: "").toString().trim()
 }()
@@ -140,7 +137,6 @@ android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
     ndkVersion "27.2.12479018"
-
 
     externalNativeBuild {
         cmake {
@@ -157,25 +153,20 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
-
         coreLibraryDesugaringEnabled true
     }
 
     defaultConfig {
         minSdkVersion 23
         targetSdkVersion 36
-
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
-
         multiDexEnabled true
-
-        buildConfigField "int", "TELEGRAM_API_ID", String.valueOf(toloramApiId)
-        buildConfigField "String", "TELEGRAM_API_HASH", "\"" + toloramApiHash + "\""
-
+        buildConfigField "int", "TELEGRAM_API_ID", String.valueOf(vichgramApiId)
+        buildConfigField "String", "TELEGRAM_API_HASH", "\"" + vichgramApiHash + "\""
         externalNativeBuild {
             cmake {
                 version '3.22.1'
-                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21' //, '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON'
+                arguments '-DANDROID_STL=c++_static', '-DANDROID_PLATFORM=android-21'
                 targets 'tmessages.49'
             }
         }
@@ -194,7 +185,6 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "0"
         }
-
         HA_private {
             matchingFallbacks = ['release']
             jniDebuggable false
@@ -207,7 +197,6 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "1"
         }
-
         HA_public {
             matchingFallbacks = ['release']
             jniDebuggable false
@@ -220,7 +209,6 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "4"
         }
-
         HA_hardcore {
             matchingFallbacks = ['release']
             jniDebuggable false
@@ -233,7 +221,6 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "5"
         }
-
         standalone {
             matchingFallbacks = ['release']
             jniDebuggable false
@@ -246,7 +233,6 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "6"
         }
-
         release {
             jniDebuggable false
             shrinkResources false
@@ -267,7 +253,6 @@ android {
 
     namespace 'org.telegram.messenger'
 }
-
 
 def getProps(String propName) {
     def propsFile = rootProject.file('local.properties')
