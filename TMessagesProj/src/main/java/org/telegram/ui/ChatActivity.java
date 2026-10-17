@@ -21908,6 +21908,8 @@ public class ChatActivity extends BaseFragment implements
         }
     }
 
+        vichgramRestoreDeletedMessages();
+
     private void didReceivedNotification2(int id, int account, final Object... args) {
         if (id == NotificationCenter.invalidateMotionBackground) {
             if (chatListView != null) {
@@ -26377,6 +26379,51 @@ public class ChatActivity extends BaseFragment implements
             sponsoredMessagesCount++;
         }
         return sponsoredMessagesCount;
+    }
+
+
+    // VICHGRAM_RESTORE_DELETED
+    private void vichgramRestoreDeletedMessages() {
+        if (!VichGramPrefs.isWatchDeletedMessages()) {
+            return;
+        }
+        try {
+            java.util.List<Integer> ids = VichGramMessageStore.getDeletedIds(currentAccount, dialog_id);
+            if (ids == null || ids.isEmpty()) {
+                return;
+            }
+            boolean added = false;
+            for (int i = 0; i < ids.size(); i++) {
+                int mid = ids.get(i);
+                if (messagesDict[0].indexOfKey(mid) >= 0) {
+                    MessageObject existing = messagesDict[0].get(mid);
+                    if (existing != null) {
+                        existing.deleted = true;
+                    }
+                    continue;
+                }
+                MessageObject restored = VichGramMessageStore.restoreDeletedMessage(currentAccount, dialog_id, mid);
+                if (restored == null) {
+                    continue;
+                }
+                messagesDict[0].put(mid, restored);
+                int insertAt = messages.size();
+                for (int j = 0; j < messages.size(); j++) {
+                    MessageObject m = messages.get(j);
+                    if (m != null && m.getId() > 0 && m.getId() < mid) {
+                        insertAt = j;
+                        break;
+                    }
+                }
+                messages.add(insertAt, restored);
+                added = true;
+            }
+            if (added && chatAdapter != null) {
+                chatAdapter.notifyDataSetChanged();
+            }
+        } catch (Exception e) {
+            FileLog.e(e);
+        }
     }
 
     private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent) {
