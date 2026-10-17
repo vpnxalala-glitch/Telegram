@@ -1,0 +1,66 @@
+name: Restore DownloadController Turbo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 20
+
+      - name: Restore DownloadController from before placeholder
+        run: |
+          # Find last good commit that had real DownloadController
+          git log --oneline -- TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java | head -10
+          # Restore from commit before placeholder push
+          git show 0497eabab4b5dabdb2ba28f1eaa9763e553c60d8:TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java > TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+          wc -l TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+
+      - name: Apply Turbo hooks
+        run: |
+          python3 << 'PY'
+          import re
+          from pathlib import Path
+          path = Path("TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java")
+          text = path.read_text(encoding="utf-8")
+          if "VichGramPrefs.isTurboMode" in text:
+              print("already patched")
+          else:
+              pat1 = re.compile(r'(public boolean canDownloadMedia\(MessageObject messageObject\)\s*\{)', re.M)
+              text, n1 = pat1.subn(r'''\1
+        // VichGram Turbo: always allow media download
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }''', text, count=1)
+              print("msg", n1)
+              pat2 = re.compile(r'(public boolean canDownloadMedia\(int type, long size\)\s*\{)', re.M)
+              text, n2 = pat2.subn(r'''\1
+        // VichGram Turbo: no size/type limits
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }''', text, count=1)
+              print("type", n2)
+              pat3 = re.compile(r'(public int canDownloadMediaType\(MessageObject messageObject\)\s*\{)', re.M)
+              text, n3 = pat3.subn(r'''\1
+        // VichGram Turbo
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return 2;
+        }''', text, count=1)
+              print("mediaType", n3)
+              path.write_text(text, encoding="utf-8")
+          print("ok", path.stat().st_size)
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+          git commit -m "VichGram: restore DownloadController + Turbo mode hooks" || exit 0
+          git push
