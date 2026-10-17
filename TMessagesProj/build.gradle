@@ -109,6 +109,33 @@ dependencies {
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 
+// Toloram: API credentials from env (CI secrets) or gradle properties / local.properties
+def toloramApiId = {
+    def v = System.getenv("TOLORAM_TG_API_ID") ?: System.getenv("VICHGRAM_TG_API_ID")
+    if (v == null || v.trim().isEmpty()) {
+        v = project.findProperty("TOLORAM_TG_API_ID") ?: project.findProperty("VICHGRAM_TG_API_ID")
+    }
+    if ((v == null || v.toString().trim().isEmpty()) && rootProject.file('local.properties').exists()) {
+        def props = new Properties()
+        props.load(new FileInputStream(rootProject.file('local.properties')))
+        v = props.getProperty("TOLORAM_TG_API_ID") ?: props.getProperty("VICHGRAM_TG_API_ID")
+    }
+    def n = (v ?: "0").toString().trim().toInteger()
+    return n
+}()
+def toloramApiHash = {
+    def v = System.getenv("TOLORAM_TG_API_HASH") ?: System.getenv("VICHGRAM_TG_API_HASH")
+    if (v == null || v.trim().isEmpty()) {
+        v = project.findProperty("TOLORAM_TG_API_HASH") ?: project.findProperty("VICHGRAM_TG_API_HASH")
+    }
+    if ((v == null || v.toString().trim().isEmpty()) && rootProject.file('local.properties').exists()) {
+        def props = new Properties()
+        props.load(new FileInputStream(rootProject.file('local.properties')))
+        v = props.getProperty("TOLORAM_TG_API_HASH") ?: props.getProperty("VICHGRAM_TG_API_HASH")
+    }
+    return (v ?: "").toString().trim()
+}()
+
 android {
     compileSdkVersion 36
     buildToolsVersion '36.0.0'
@@ -141,6 +168,9 @@ android {
         vectorDrawables.generatedDensities = ['mdpi', 'hdpi', 'xhdpi', 'xxhdpi']
 
         multiDexEnabled true
+
+        buildConfigField "int", "TELEGRAM_API_ID", String.valueOf(toloramApiId)
+        buildConfigField "String", "TELEGRAM_API_HASH", "\"" + toloramApiHash + "\""
 
         externalNativeBuild {
             cmake {
@@ -229,6 +259,10 @@ android {
             buildConfigField "boolean", "BUNDLE", "false"
             buildConfigField "int", "VERSION_NUM", "7"
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     namespace 'org.telegram.messenger'

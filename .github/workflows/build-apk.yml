@@ -46,19 +46,40 @@ jobs:
           fi
           cat local.properties
 
+      - name: Check Toloram API credentials
+        id: api_credentials
+        env:
+          TOLORAM_TG_API_ID: ${{ secrets.TOLORAM_TG_API_ID }}
+          TOLORAM_TG_API_HASH: ${{ secrets.TOLORAM_TG_API_HASH }}
+          VICHGRAM_TG_API_ID: ${{ secrets.VICHGRAM_TG_API_ID }}
+          VICHGRAM_TG_API_HASH: ${{ secrets.VICHGRAM_TG_API_HASH }}
+        run: |
+          ID="${TOLORAM_TG_API_ID:-$VICHGRAM_TG_API_ID}"
+          HASH="${TOLORAM_TG_API_HASH:-$VICHGRAM_TG_API_HASH}"
+          if [ -z "$ID" ] || [ -z "$HASH" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::API secrets missing in this repo. Add TOLORAM_TG_API_ID and TOLORAM_TG_API_HASH (or VICHGRAM_TG_*) in Settings → Secrets."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Toloram API credentials found."
+          fi
+
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK
-        run: ./gradlew --no-daemon --stacktrace --warning-mode all assembleAfatDebug
+      - name: Build debug APK (Toloram)
         env:
-          ORG_GRADLE_PROJECT_APP_PACKAGE: org.telegram.messenger
+          TOLORAM_TG_API_ID: ${{ secrets.TOLORAM_TG_API_ID }}
+          TOLORAM_TG_API_HASH: ${{ secrets.TOLORAM_TG_API_HASH }}
+          VICHGRAM_TG_API_ID: ${{ secrets.VICHGRAM_TG_API_ID }}
+          VICHGRAM_TG_API_HASH: ${{ secrets.VICHGRAM_TG_API_HASH }}
+        run: ./gradlew --no-daemon --stacktrace --warning-mode all assembleAfatDebug
 
       - name: Upload APK artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: telegram-debug-apk
+          name: toloram-debug-apk
           path: '**/build/outputs/apk/**/*.apk'
           if-no-files-found: warn
           retention-days: 14
