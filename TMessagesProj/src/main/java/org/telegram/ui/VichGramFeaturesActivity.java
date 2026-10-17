@@ -43,6 +43,14 @@ public class VichGramFeaturesActivity extends BaseFragment {
     private static final int ID_EDITS = 4;
     private static final int ID_EDITS_INFO = 5;
 
+    private static final int ID_HEADER_SPEED = 10;
+    private static final int ID_TURBO = 11;
+    private static final int ID_TURBO_INFO = 12;
+
+    private static final int ID_HEADER_ANIM = 20;
+    private static final int ID_ANIM_STYLE = 21;
+    private static final int ID_ANIM_INFO = 22;
+
     private RecyclerListView listView;
     private ListAdapter adapter;
     private final ArrayList<Item> items = new ArrayList<>();
@@ -92,6 +100,14 @@ public class VichGramFeaturesActivity extends BaseFragment {
                 }
             } else if (item.id == ID_CLEAR_DELETED) {
                 showClearDeletedConfirm();
+            } else if (item.id == ID_TURBO) {
+                boolean next = !VichGramPrefs.isTurboMode();
+                VichGramPrefs.setTurboMode(next);
+                if (view instanceof TextCheckCell) {
+                    ((TextCheckCell) view).setChecked(next);
+                }
+            } else if (item.id == ID_ANIM_STYLE) {
+                showAnimationStylePicker();
             }
         });
 
@@ -118,8 +134,46 @@ public class VichGramFeaturesActivity extends BaseFragment {
         showDialog(builder.create());
     }
 
+    private void showAnimationStylePicker() {
+        if (getParentActivity() == null) {
+            return;
+        }
+        final String[] names = new String[]{
+                "Классика",
+                "Плавный",
+                "Быстрый",
+                "Минимальный"
+        };
+        final String[] descs = new String[]{
+                "Стандартные анимации Telegram",
+                "Свои плавные кривые, чуть дольше",
+                "Свои быстрые переходы (не копия TG)",
+                "Почти без декоративных анимаций"
+        };
+        CharSequence[] items = new CharSequence[names.length];
+        for (int i = 0; i < names.length; i++) {
+            items[i] = names[i] + "\n" + descs[i];
+        }
+        AlertDialog.Builder builder = new AlertDialog.Builder(getParentActivity());
+        builder.setTitle("Стиль анимаций");
+        int current = VichGramPrefs.getAnimationStyle();
+        builder.setItems(items, (dialog, which) -> {
+            VichGramPrefs.setAnimationStyle(which);
+            rebuildItems();
+            if (getParentActivity() != null) {
+                org.telegram.ui.Components.BulletinFactory.of(this)
+                        .createSimpleBulletin(R.raw.chats_infotip, "Стиль: " + VichGramPrefs.getAnimationStyleName())
+                        .show();
+            }
+        });
+        builder.setNegativeButton("Отмена", null);
+        showDialog(builder.create());
+    }
+
     private void rebuildItems() {
         items.clear();
+
+        // --- Смотреть ---
         items.add(new Item(VIEW_HEADER, ID_HEADER_WATCH, "Смотреть"));
         items.add(new Item(VIEW_CHECK, ID_DELETED, "Удалённые сообщения"));
         items.add(new Item(VIEW_INFO, ID_DELETED_INFO,
@@ -130,6 +184,19 @@ public class VichGramFeaturesActivity extends BaseFragment {
         items.add(new Item(VIEW_CHECK, ID_EDITS, "Изменения сообщений"));
         items.add(new Item(VIEW_INFO, ID_EDITS_INFO,
                 "Если включено, VichGram показывает, как сообщение выглядело до редактирования. Нажмите на время сообщения, чтобы открыть историю."));
+
+        // --- Скорость ---
+        items.add(new Item(VIEW_HEADER, ID_HEADER_SPEED, "Скорость"));
+        items.add(new Item(VIEW_CHECK, ID_TURBO, "Турбо режим"));
+        items.add(new Item(VIEW_INFO, ID_TURBO_INFO,
+                "Быстрая загрузка фото, видео, GIF и сообщений. Автозагрузка без лимитов, стриминг видео и приоритет скачивания." ));
+
+        // --- Анимации ---
+        items.add(new Item(VIEW_HEADER, ID_HEADER_ANIM, "Анимации"));
+        items.add(new Item(VIEW_SETTINGS, ID_ANIM_STYLE, "Стиль: " + VichGramPrefs.getAnimationStyleName()));
+        items.add(new Item(VIEW_INFO, ID_ANIM_INFO,
+                "Свои стили анимаций VichGram (не копии Telegram). Классика / Плавный / Быстрый / Минимальный."));
+
         if (adapter != null) {
             adapter.notifyDataSetChanged();
         }
@@ -184,6 +251,8 @@ public class VichGramFeaturesActivity extends BaseFragment {
                     checked = VichGramPrefs.isWatchDeletedMessages();
                 } else if (item.id == ID_EDITS) {
                     checked = VichGramPrefs.isWatchMessageEdits();
+                } else if (item.id == ID_TURBO) {
+                    checked = VichGramPrefs.isTurboMode();
                 }
                 boolean divider = position + 1 < items.size() && items.get(position + 1).viewType == VIEW_CHECK;
                 cell.setTextAndCheck(item.text.toString(), checked, divider);
@@ -191,7 +260,11 @@ public class VichGramFeaturesActivity extends BaseFragment {
                 TextSettingsCell cell = (TextSettingsCell) holder.itemView;
                 boolean divider = position + 1 < items.size() && items.get(position + 1).viewType == VIEW_SETTINGS;
                 cell.setText(item.text.toString(), divider);
-                cell.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+                if (item.id == ID_CLEAR_DELETED) {
+                    cell.setTextColor(Theme.getColor(Theme.key_text_RedRegular));
+                } else {
+                    cell.setTextColor(Theme.getColor(Theme.key_windowBackgroundWhiteBlackText));
+                }
             }
         }
 
