@@ -15,12 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 40
       - name: Run patch
         run: python3 tools/patch_restore_deleted.py
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-          git commit -m "VichGram: restore deleted messages when opening chat" || exit 0
+          git add TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+          git commit -m "VichGram: restore DownloadController + Turbo mode hooks" || exit 0
           git push
