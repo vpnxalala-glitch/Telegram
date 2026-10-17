@@ -134,6 +134,8 @@ import org.telegram.messenger.SharedConfig;
 import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.TranslateController;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.VichGramPrefs;
+import org.telegram.messenger.VichGramMessageStore;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.WebFile;
@@ -4185,6 +4187,26 @@ public class ChatMessageCell extends BaseCell implements SeekBar.SeekBarDelegate
         boolean result = false;
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             if (x >= drawTimeX && x <= drawTimeX + timeWidth && y >= drawTimeY && y <= drawTimeY + dp(20)) {
+            // VICHGRAM_EDIT_HISTORY
+            if (VichGramPrefs.isWatchMessageEdits() && currentMessageObject != null && VichGramMessageStore.hasEditHistory(currentAccount, currentMessageObject.getDialogId(), currentMessageObject.getId())) {
+                java.util.List<String> hist = VichGramMessageStore.getEditHistory(currentAccount, currentMessageObject.getDialogId(), currentMessageObject.getId());
+                if (delegate != null && !hist.isEmpty()) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int hi = 0; hi < hist.size(); hi++) {
+                        if (hi > 0) sb.append("\n\n---\n\n");
+                        sb.append(hist.get(hi));
+                    }
+                    // fall through to show via delegate bulletin if available
+                    try {
+                        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(getContext());
+                        b.setTitle("История изменений");
+                        b.setMessage(sb.toString());
+                        b.setPositiveButton("OK", null);
+                        b.show();
+                        return true;
+                    } catch (Exception ignored) {}
+                }
+            }
                 timePressed = true;
                 result = true;
                 invalidate();

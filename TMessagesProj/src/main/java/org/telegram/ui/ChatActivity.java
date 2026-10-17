@@ -186,6 +186,8 @@ import org.telegram.messenger.SvgHelper;
 import org.telegram.messenger.Timer;
 import org.telegram.messenger.TranslateController;
 import org.telegram.messenger.UserConfig;
+import org.telegram.messenger.VichGramPrefs;
+import org.telegram.messenger.VichGramMessageStore;
 import org.telegram.messenger.UserObject;
 import org.telegram.messenger.Utilities;
 import org.telegram.messenger.VideoEditedInfo;
@@ -26753,6 +26755,14 @@ public class ChatActivity extends BaseFragment implements
                 pinnedMessageObjects.put(messageObject.getId(), messageObject);
             }
             MessageObject old = messagesDict[loadIndex].get(messageObject.getId());
+  // VICHGRAM_SAVE_EDIT
+  if (VichGramPrefs.isWatchMessageEdits() && old != null && messageObject != null && old.messageOwner != null && messageObject.messageOwner != null) {
+      String oldText = old.messageOwner.message;
+      String newText = messageObject.messageOwner.message;
+      if (oldText != null && newText != null && !oldText.equals(newText)) {
+          VichGramMessageStore.saveEdit(currentAccount, dialog_id, old.getId(), oldText);
+      }
+  }
             if (messageObject.getId() > 0 && old == null && UserObject.isBot(currentUser)) {
                 old = BotForumHelper.getInstance(currentAccount).onBotForumDraftCheckNewMessages(currentUser.id, (int) getTopicId(), messageObject.getId(), messageObject.messageText.toString());
                 if (old != null) {
