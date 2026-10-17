@@ -15,20 +15,25 @@ jobs:
       - name: Patch processDeletedMessages keep path
         run: |
           python3 << 'PY'
+          import re
           from pathlib import Path
-          path = Path('TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java')
-          text = path.read_text(encoding='utf-8')
-          if 'VICHGRAM_KEEP_DELETED' in text:
-              print('already patched')
+          path = Path("TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java")
+          text = path.read_text(encoding="utf-8")
+          if "VICHGRAM_KEEP_DELETED" in text:
+              print("already patched")
               raise SystemExit(0)
 
-          old = '''        for (int a = 0; a < size; a++) {
-            Integer mid = markAsDeletedMessages.get(a);
-            MessageObject obj = chatAdapter != null && chatAdapter.isFiltered ? filteredMessagesDict.get(mid) :  messagesDict[loadIndex].get(mid);'''
+          pattern = re.compile(
+              r"(for \(int a = 0; a < size; a\+\+\) \{\s*"
+              r"Integer mid = markAsDeletedMessages\.get\(a\);\s*"
+              r"MessageObject obj = chatAdapter != null && chatAdapter\.isFiltered \? filteredMessagesDict\.get\(mid\) :\s*messagesDict\[loadIndex\]\.get\(mid\);)"
+          )
+          m = pattern.search(text)
+          if not m:
+              print("pattern not found")
+              raise SystemExit(1)
 
-          new = '''        for (int a = 0; a < size; a++) {
-            Integer mid = markAsDeletedMessages.get(a);
-            MessageObject obj = chatAdapter != null && chatAdapter.isFiltered ? filteredMessagesDict.get(mid) :  messagesDict[loadIndex].get(mid);
+          insert = m.group(1) + """
             // VICHGRAM_KEEP_DELETED: keep message in chat when feature is on
             if (VichGramPrefs.isWatchDeletedMessages() && obj != null) {
                 VichGramMessageStore.saveDeleted(currentAccount, obj);
@@ -37,27 +42,10 @@ jobs:
                     chatAdapter.updateRowWithMessageObject(obj, false, false);
                 }
                 continue;
-            }'''
-
-          if old not in text:
-              # try single space variant
-              old2 = old.replace(':  messagesDict', ': messagesDict')
-              new2 = new.replace(':  messagesDict', ': messagesDict')
-              if old2 in text:
-                  text = text.replace(old2, new2, 1)
-                  print('patched variant2')
-              else:
-                  # dump nearby for debug
-                  idx = text.find('for (int a = 0; a < size; a++) {\n            Integer mid = markAsDeletedMessages')
-                  print('idx', idx)
-                  if idx >= 0:
-                      print(repr(text[idx:idx+220]))
-                  raise SystemExit('pattern not found')
-          else:
-              text = text.replace(old, new, 1)
-              print('patched variant1')
-
-          path.write_text(text, encoding='utf-8')
+            }"""
+          text = pattern.sub(insert, text, count=1)
+          path.write_text(text, encoding="utf-8")
+          print("patched ok")
           PY
 
       - name: Commit
