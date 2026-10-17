@@ -1,0 +1,107 @@
+name: Apply VichGram Features Logic
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch ChatActivity + ChatMessageCell
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+
+          # --- ChatActivity: processDeletedMessages keep deleted ---
+          ca = Path('TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java')
+          text = ca.read_text(encoding='utf-8')
+
+          if 'VichGramPrefs' not in text:
+              # add imports near other messenger imports
+              needle = 'import org.telegram.messenger.UserConfig;'
+              if needle in text:
+                  text = text.replace(needle, needle + '\nimport org.telegram.messenger.VichGramPrefs;\nimport org.telegram.messenger.VichGramMessageStore;', 1)
+
+          # Inject at start of processDeletedMessages body after loadIndex setup - mark keep-deleted path
+          marker = 'private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent, boolean thanos) {'
+          if marker in text and 'VICHGRAM_KEEP_DELETED' not in text:
+              # After "if (obj != null) {" inside the for loop - find unique block
+              # Safer: inject right after "for (int a = 0; a < size; a++) {"
+              loop = '''        for (int a = 0; a < size; a++) {
+            Integer mid = markAsDeletedMessages.get(a);'''
+              inject = '''        for (int a = 0; a < size; a++) {
+            Integer mid = markAsDeletedMessages.get(a);
+            // VICHGRAM_KEEP_DELETED
+            if (VichGramPrefs.isWatchDeletedMessages()) {
+                MessageObject vichObj = chatAdapter != null && chatAdapter.isFiltered ? filteredMessagesDict.get(mid) : messagesDict[loadIndex].get(mid);
+                if (vichObj != null) {
+                    VichGramMessageStore.saveDeleted(currentAccount, vichObj);
+                    vichObj.deleted = true;
+                    if (chatAdapter != null) {
+                        int idx = messages.indexOf(vichObj);
+                        if (idx >= 0) {
+                            chatAdapter.updateRowWithMessageObject(vichObj, false, false);
+                        }
+                    }
+                    continue;
+                }
+            }'''
+              if loop in text:
+                  text = text.replace(loop, inject, 1)
+                  print('ChatActivity processDeletedMessages patched')
+              else:
+                  print('WARN: delete loop not found')
+
+          # replaceMessageObjects - save edit history
+          rmarker = 'MessageObject old = messagesDict[loadIndex].get(messageObject.getId());'
+          if rmarker in text and 'VICHGRAM_SAVE_EDIT' not in text:
+              inject_edit = '''MessageObject old = messagesDict[loadIndex].get(messageObject.getId());
+            // VICHGRAM_SAVE_EDIT
+            if (VichGramPrefs.isWatchMessageEdits() && old != null && messageObject != null && old.messageOwner != null && messageObject.messageOwner != null) {
+                String oldText = old.messageOwner.message;
+                String newText = messageObject.messageOwner.message;
+                if (oldText != null && newText != null && !oldText.equals(newText)) {
+                    VichGramMessageStore.saveEdit(currentAccount, dialog_id, old.getId(), oldText);
+                }
+            }'''
+              text = text.replace(rmarker, inject_edit, 1)
+              print('ChatActivity replaceMessageObjects patched')
+
+          ca.write_text(text, encoding='utf-8')
+
+          # --- ChatMessageCell: deleted alpha + edit history on time click ---
+          cell = Path('TMessagesProj/src/main/java/org/telegram/ui/Cells/ChatMessageCell.java')
+          ct = cell.read_text(encoding='utf-8')
+          if 'VichGramPrefs' not in ct:
+              n = 'import org.telegram.messenger.UserConfig;'
+              if n in ct:
+                  ct = ct.replace(n, n + '\nimport org.telegram.messenger.VichGramPrefs;\nimport org.telegram.messenger.VichGramMessageStore;', 1)
+              else:
+                  n2 = 'import org.telegram.messenger.MessageObject;'
+                  if n2 in ct:
+                      ct = ct.replace(n2, n2 + '\nimport org.telegram.messenger.VichGramPrefs;\nimport org.telegram.messenger.VichGramMessageStore;', 1)
+
+          # time click: show edit history
+          time_click = 'if (x >= drawTimeX && x <= drawTimeX + timeWidth && y >= drawTimeY && y <= drawTimeY + dp(20)) {'
+          if time_click in ct and 'VICHGRAM_EDIT_HISTORY' not in ct:
+              # Find a reasonable insertion after this if - show dialog when history exists
+              # We'll add right after the opening brace a history check
+              ct = ct.replace(time_click, time_click + '''\n            // VICHGRAM_EDIT_HISTORY\n            if (VichGramPrefs.isWatchMessageEdits() && currentMessageObject != null && VichGramMessageStore.hasEditHistory(currentAccount, currentMessageObject.getDialogId(), currentMessageObject.getId())) {\n                java.util.List<String> hist = VichGramMessageStore.getEditHistory(currentAccount, currentMessageObject.getDialogId(), currentMessageObject.getId());\n                if (delegate != null && !hist.isEmpty()) {\n                    StringBuilder sb = new StringBuilder();\n                    for (int hi = 0; hi < hist.size(); hi++) {\n                        if (hi > 0) sb.append("\\n\\n---\\n\\n");\n                        sb.append(hist.get(hi));\n                    }\n                    // fall through to show via delegate bulletin if available\n                    try {\n                        android.app.AlertDialog.Builder b = new android.app.AlertDialog.Builder(getContext());\n                        b.setTitle("История изменений");\n                        b.setMessage(sb.toString());\n                        b.setPositiveButton("OK", null);\n                        b.show();\n                        return true;\n                    } catch (Exception ignored) {}\n                }\n            }''', 1)
+              print('ChatMessageCell time click patched')
+
+          cell.write_text(ct, encoding='utf-8')
+          print('done')
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement VichGram deleted messages + edit history hooks" || exit 0
+          git push
