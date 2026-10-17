@@ -14,36 +14,55 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Restore file from history
+      - name: Restore DownloadController + Turbo
         run: |
           set -eux
-          GOOD=2f286f864e2b7d68cc2c2d5cb62c57ab75489661
-          TARGET=TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
+          GOOD=0497eabab4b5dabdb2ba28f1eaa9763e553c60d8
+          TARGET=TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
           git show "$GOOD:$TARGET" > "$TARGET"
-          grep -q "class SettingsActivity" "$TARGET"
-          # Features menu entry
-          python3 -c "
+          wc -c "$TARGET"
+          python3 << 'PY'
+          import re
           from pathlib import Path
-          p=Path('$TARGET')
-          t=p.read_text()
-          n='items.add(SettingCell.Factory.of(9, IconBackgroundColors.ORANGE_DEEP.top, IconBackgroundColors.ORANGE_DEEP.bottom, R.drawable.settings_power, getString(R.string.SettingsPowerSaving), getString(R.string.SettingsPowerSavingInfo)));'
-          i=n+chr(10)+'        items.add(SettingCell.Factory.of(30, IconBackgroundColors.PURPLE.top, IconBackgroundColors.PURPLE.bottom, R.drawable.settings_features, \"Функции\", \"Удалённые и изменённые сообщения\"));'
-          if 'Factory.of(30,' not in t:
-            assert n in t
-            t=t.replace(n,i,1)
-          c='            case 24: {\n                presentFragment(new RoundVideoSettingsActivity());\n                break;\n            }\n        }\n    }'
-          r='            case 24: {\n                presentFragment(new RoundVideoSettingsActivity());\n                break;\n            }\n            case 30: {\n                presentSettingFragment(new VichGramFeaturesActivity());\n                break;\n            }\n        }\n    }'
-          if 'case 30:' not in t:
-            assert c in t
-            t=t.replace(c,r,1)
-          p.write_text(t)
-          print('ok', len(t))
-          "
+          path = Path("TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java")
+          text = path.read_text(encoding="utf-8")
+          assert "class DownloadController" in text
+          if "VichGramPrefs.isTurboMode" not in text:
+              text, n1 = re.subn(
+                  r'(public boolean canDownloadMedia\(MessageObject messageObject\)\s*\{)',
+                  r'''\1
+        // VichGram Turbo: always allow media download
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }''',
+                  text, count=1, flags=re.M)
+              print("msg", n1)
+              text, n2 = re.subn(
+                  r'(public boolean canDownloadMedia\(int type, long size\)\s*\{)',
+                  r'''\1
+        // VichGram Turbo: no size/type limits
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }''',
+                  text, count=1, flags=re.M)
+              print("type", n2)
+              text, n3 = re.subn(
+                  r'(public int canDownloadMediaType\(MessageObject messageObject\)\s*\{)',
+                  r'''\1
+        // VichGram Turbo
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return 2;
+        }''',
+                  text, count=1, flags=re.M)
+              print("mediaType", n3)
+              path.write_text(text, encoding="utf-8")
+          print("size", path.stat().st_size, "hooks", text.count("isTurboMode"))
+          PY
 
       - name: Push
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add TMessagesProj/src/main/java/org/telegram/ui/SettingsActivity.java
-          git commit -m 'Restore SettingsActivity + Features menu' || exit 0
+          git add TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+          git commit -m "VichGram: restore DownloadController + Turbo mode hooks" || exit 0
           git push
