@@ -1,0 +1,81 @@
+name: Apply VichGram Turbo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch DownloadController for Turbo
+        run: |
+          python3 << 'PY'
+          from pathlib import Path
+
+          path = Path("TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java")
+          text = path.read_text(encoding="utf-8")
+
+          if "VichGramPrefs.isTurboMode" in text:
+              print("Already patched")
+          else:
+              # Insert turbo short-circuit into canDownloadMedia(MessageObject)
+              old1 = """public boolean canDownloadMedia(MessageObject messageObject) {
+          if (messageObject.type == MessageObject.TYPE_STORY) {"""
+              new1 = """public boolean canDownloadMedia(MessageObject messageObject) {
+          // VichGram Turbo: always allow media download
+          if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+              return true;
+          }
+          if (messageObject.type == MessageObject.TYPE_STORY) {"""
+              if old1 in text:
+                  text = text.replace(old1, new1, 1)
+                  print("Patched canDownloadMedia(MessageObject)")
+              else:
+                  print("WARN: canDownloadMedia(MessageObject) pattern not found")
+
+              # Insert into canDownloadMedia(int type, long size)
+              old2 = """public boolean canDownloadMedia(int type, long size) {
+          Preset preset;"""
+              new2 = """public boolean canDownloadMedia(int type, long size) {
+          // VichGram Turbo: no size/type limits
+          if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+              return true;
+          }
+          Preset preset;"""
+              if old2 in text:
+                  text = text.replace(old2, new2, 1)
+                  print("Patched canDownloadMedia(int, long)")
+              else:
+                  print("WARN: canDownloadMedia(int, long) pattern not found")
+
+              # canDownloadMediaType(MessageObject) - return 2 (full) when turbo
+              old3 = """public int canDownloadMediaType(MessageObject messageObject) {
+          if (messageObject.type == MessageObject.TYPE_STORY) {"""
+              new3 = """public int canDownloadMediaType(MessageObject messageObject) {
+          // VichGram Turbo
+          if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+              return 2;
+          }
+          if (messageObject.type == MessageObject.TYPE_STORY) {"""
+              if old3 in text:
+                  text = text.replace(old3, new3, 1)
+                  print("Patched canDownloadMediaType(MessageObject)")
+              else:
+                  print("WARN: canDownloadMediaType pattern not found")
+
+              path.write_text(text, encoding="utf-8")
+              print("DownloadController written")
+
+          # Also force high preset sizes when turbo is conceptually on -
+          # actual runtime check is in canDownloadMedia above.
+          print("Done")
+          PY
+
+      - name: Commit
+        run: |
+          git config user.name "vichgram-bot"
+          git config user.email "bot@vichgram.local"
+          git add -A
+          git diff --cached --quiet && echo "No changes" || (git commit -m "VichGram: Turbo mode hooks in DownloadController" && git push)
