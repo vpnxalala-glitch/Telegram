@@ -1,8 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- VichGram branding overrides -->
-    <string name="AppName">VichGram</string>
-    <string name="AppNameBeta">VichGram Beta</string>
-    <string name="NotificationHiddenName">VichGram</string>
-    <string name="NotificationHiddenChatName">VichGram</string>
-</resources>
