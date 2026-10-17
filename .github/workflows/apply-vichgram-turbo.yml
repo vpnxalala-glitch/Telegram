@@ -12,6 +12,7 @@ jobs:
       - name: Patch DownloadController for Turbo
         run: |
           python3 << 'PY'
+          import re
           from pathlib import Path
 
           path = Path("TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java")
@@ -20,56 +21,48 @@ jobs:
           if "VichGramPrefs.isTurboMode" in text:
               print("Already patched")
           else:
-              # Insert turbo short-circuit into canDownloadMedia(MessageObject)
-              old1 = """public boolean canDownloadMedia(MessageObject messageObject) {
-          if (messageObject.type == MessageObject.TYPE_STORY) {"""
-              new1 = """public boolean canDownloadMedia(MessageObject messageObject) {
+              # 1) canDownloadMedia(MessageObject messageObject)
+              pat1 = re.compile(
+                  r'(public boolean canDownloadMedia\(MessageObject messageObject\)\s*\{)',
+                  re.M
+              )
+              repl1 = r'''\1
           // VichGram Turbo: always allow media download
           if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
               return true;
-          }
-          if (messageObject.type == MessageObject.TYPE_STORY) {"""
-              if old1 in text:
-                  text = text.replace(old1, new1, 1)
-                  print("Patched canDownloadMedia(MessageObject)")
-              else:
-                  print("WARN: canDownloadMedia(MessageObject) pattern not found")
+          }'''
+              text, n1 = pat1.subn(repl1, text, count=1)
+              print(f"canDownloadMedia(MessageObject): {n1}")
 
-              # Insert into canDownloadMedia(int type, long size)
-              old2 = """public boolean canDownloadMedia(int type, long size) {
-          Preset preset;"""
-              new2 = """public boolean canDownloadMedia(int type, long size) {
+              # 2) canDownloadMedia(int type, long size)
+              pat2 = re.compile(
+                  r'(public boolean canDownloadMedia\(int type, long size\)\s*\{)',
+                  re.M
+              )
+              repl2 = r'''\1
           // VichGram Turbo: no size/type limits
           if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
               return true;
-          }
-          Preset preset;"""
-              if old2 in text:
-                  text = text.replace(old2, new2, 1)
-                  print("Patched canDownloadMedia(int, long)")
-              else:
-                  print("WARN: canDownloadMedia(int, long) pattern not found")
+          }'''
+              text, n2 = pat2.subn(repl2, text, count=1)
+              print(f"canDownloadMedia(int, long): {n2}")
 
-              # canDownloadMediaType(MessageObject) - return 2 (full) when turbo
-              old3 = """public int canDownloadMediaType(MessageObject messageObject) {
-          if (messageObject.type == MessageObject.TYPE_STORY) {"""
-              new3 = """public int canDownloadMediaType(MessageObject messageObject) {
+              # 3) canDownloadMediaType(MessageObject messageObject) - first occurrence only
+              pat3 = re.compile(
+                  r'(public int canDownloadMediaType\(MessageObject messageObject\)\s*\{)',
+                  re.M
+              )
+              repl3 = r'''\1
           // VichGram Turbo
           if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
               return 2;
-          }
-          if (messageObject.type == MessageObject.TYPE_STORY) {"""
-              if old3 in text:
-                  text = text.replace(old3, new3, 1)
-                  print("Patched canDownloadMediaType(MessageObject)")
-              else:
-                  print("WARN: canDownloadMediaType pattern not found")
+          }'''
+              text, n3 = pat3.subn(repl3, text, count=1)
+              print(f"canDownloadMediaType(MessageObject): {n3}")
 
               path.write_text(text, encoding="utf-8")
               print("DownloadController written")
 
-          # Also force high preset sizes when turbo is conceptually on -
-          # actual runtime check is in canDownloadMedia above.
           print("Done")
           PY
 
