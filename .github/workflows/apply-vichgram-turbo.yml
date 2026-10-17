@@ -3,11 +3,16 @@ name: Apply VichGram Turbo
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   patch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Patch DownloadController for Turbo
         run: |
@@ -21,42 +26,39 @@ jobs:
           if "VichGramPrefs.isTurboMode" in text:
               print("Already patched")
           else:
-              # 1) canDownloadMedia(MessageObject messageObject)
               pat1 = re.compile(
                   r'(public boolean canDownloadMedia\(MessageObject messageObject\)\s*\{)',
                   re.M
               )
               repl1 = r'''\1
-          // VichGram Turbo: always allow media download
-          if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
-              return true;
-          }'''
+        // VichGram Turbo: always allow media download
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }'''
               text, n1 = pat1.subn(repl1, text, count=1)
               print(f"canDownloadMedia(MessageObject): {n1}")
 
-              # 2) canDownloadMedia(int type, long size)
               pat2 = re.compile(
                   r'(public boolean canDownloadMedia\(int type, long size\)\s*\{)',
                   re.M
               )
               repl2 = r'''\1
-          // VichGram Turbo: no size/type limits
-          if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
-              return true;
-          }'''
+        // VichGram Turbo: no size/type limits
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }'''
               text, n2 = pat2.subn(repl2, text, count=1)
               print(f"canDownloadMedia(int, long): {n2}")
 
-              # 3) canDownloadMediaType(MessageObject messageObject) - first occurrence only
               pat3 = re.compile(
                   r'(public int canDownloadMediaType\(MessageObject messageObject\)\s*\{)',
                   re.M
               )
               repl3 = r'''\1
-          // VichGram Turbo
-          if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
-              return 2;
-          }'''
+        // VichGram Turbo
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return 2;
+        }'''
               text, n3 = pat3.subn(repl3, text, count=1)
               print(f"canDownloadMediaType(MessageObject): {n3}")
 
@@ -66,9 +68,14 @@ jobs:
           print("Done")
           PY
 
-      - name: Commit
+      - name: Commit and push
         run: |
           git config user.name "vichgram-bot"
           git config user.email "bot@vichgram.local"
           git add -A
-          git diff --cached --quiet && echo "No changes" || (git commit -m "VichGram: Turbo mode hooks in DownloadController" && git push)
+          if git diff --cached --quiet; then
+            echo "No changes"
+          else
+            git commit -m "VichGram: Turbo mode hooks in DownloadController"
+            git push origin HEAD:master
+          fi
