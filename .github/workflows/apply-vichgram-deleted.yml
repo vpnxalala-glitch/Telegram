@@ -11,47 +11,51 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 30
 
-      - name: Patch processDeletedMessages keep path
+      - name: Restore DownloadController and apply Turbo
         run: |
+          set -e
+          # Restore full file from last good commit
+          git show 0497eabab4b5dabdb2ba28f1eaa9763e553c60d8:TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java > TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+          wc -c TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
           python3 << 'PY'
           import re
           from pathlib import Path
-          path = Path("TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java")
+          path = Path("TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java")
           text = path.read_text(encoding="utf-8")
-          if "VICHGRAM_KEEP_DELETED" in text:
-              print("already patched")
-              raise SystemExit(0)
-
-          pattern = re.compile(
-              r"(for \(int a = 0; a < size; a\+\+\) \{\s*"
-              r"Integer mid = markAsDeletedMessages\.get\(a\);\s*"
-              r"MessageObject obj = chatAdapter != null && chatAdapter\.isFiltered \? filteredMessagesDict\.get\(mid\) :\s*messagesDict\[loadIndex\]\.get\(mid\);)"
-          )
-          m = pattern.search(text)
-          if not m:
-              print("pattern not found")
-              raise SystemExit(1)
-
-          insert = m.group(1) + """
-            // VICHGRAM_KEEP_DELETED: keep message in chat when feature is on
-            if (VichGramPrefs.isWatchDeletedMessages() && obj != null) {
-                VichGramMessageStore.saveDeleted(currentAccount, obj);
-                obj.deleted = true;
-                if (chatAdapter != null) {
-                    chatAdapter.updateRowWithMessageObject(obj, false, false);
-                }
-                continue;
-            }"""
-          text = pattern.sub(insert, text, count=1)
-          path.write_text(text, encoding="utf-8")
-          print("patched ok")
+          assert "class DownloadController" in text, "restore failed"
+          if "VichGramPrefs.isTurboMode" not in text:
+              pat1 = re.compile(r'(public boolean canDownloadMedia\(MessageObject messageObject\)\s*\{)', re.M)
+              text, n1 = pat1.subn(r'''\1
+        // VichGram Turbo: always allow media download
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }''', text, count=1)
+              print("msg", n1)
+              pat2 = re.compile(r'(public boolean canDownloadMedia\(int type, long size\)\s*\{)', re.M)
+              text, n2 = pat2.subn(r'''\1
+        // VichGram Turbo: no size/type limits
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }''', text, count=1)
+              print("type", n2)
+              pat3 = re.compile(r'(public int canDownloadMediaType\(MessageObject messageObject\)\s*\{)', re.M)
+              text, n3 = pat3.subn(r'''\1
+        // VichGram Turbo
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return 2;
+        }''', text, count=1)
+              print("mediaType", n3)
+              path.write_text(text, encoding="utf-8")
+          print("size", path.stat().st_size)
           PY
 
       - name: Commit
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java
-          git commit -m "VichGram: keep deleted messages in chat when feature enabled" || exit 0
+          git add TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java
+          git commit -m "VichGram: restore DownloadController + Turbo mode hooks" || exit 0
           git push
