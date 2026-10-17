@@ -1,82 +1,62 @@
 #!/usr/bin/env python3
+"""Restore DownloadController from good commit and apply Turbo mode hooks."""
 import re
+import subprocess
 from pathlib import Path
 
-path = Path("TMessagesProj/src/main/java/org/telegram/ui/ChatActivity.java")
-text = path.read_text(encoding="utf-8")
-if "VICHGRAM_RESTORE_DELETED" in text:
-    print("already patched")
-    raise SystemExit(0)
+TARGET = Path("TMessagesProj/src/main/java/org/telegram/messenger/DownloadController.java")
+GOOD = "0497eabab4b5dabdb2ba28f1eaa9763e553c60d8"
 
-helper = '''
-    // VICHGRAM_RESTORE_DELETED
-    private void vichgramRestoreDeletedMessages() {
-        if (!VichGramPrefs.isWatchDeletedMessages()) {
-            return;
-        }
-        try {
-            java.util.List<Integer> ids = VichGramMessageStore.getDeletedIds(currentAccount, dialog_id);
-            if (ids == null || ids.isEmpty()) {
-                return;
-            }
-            boolean added = false;
-            for (int i = 0; i < ids.size(); i++) {
-                int mid = ids.get(i);
-                if (messagesDict[0].indexOfKey(mid) >= 0) {
-                    MessageObject existing = messagesDict[0].get(mid);
-                    if (existing != null) {
-                        existing.deleted = true;
-                    }
-                    continue;
-                }
-                MessageObject restored = VichGramMessageStore.restoreDeletedMessage(currentAccount, dialog_id, mid);
-                if (restored == null) {
-                    continue;
-                }
-                messagesDict[0].put(mid, restored);
-                int insertAt = messages.size();
-                for (int j = 0; j < messages.size(); j++) {
-                    MessageObject m = messages.get(j);
-                    if (m != null && m.getId() > 0 && m.getId() < mid) {
-                        insertAt = j;
-                        break;
-                    }
-                }
-                messages.add(insertAt, restored);
-                added = true;
-            }
-            if (added && chatAdapter != null) {
-                chatAdapter.notifyDataSetChanged();
-            }
-        } catch (Exception e) {
-            FileLog.e(e);
-        }
-    }
+# Restore from good commit
+raw = subprocess.check_output(
+    ["git", "show", f"{GOOD}:{TARGET.as_posix()}"],
+    text=True,
+)
+TARGET.write_text(raw, encoding="utf-8")
+print("restored", TARGET.stat().st_size)
 
-'''
+text = TARGET.read_text(encoding="utf-8")
+assert "class DownloadController" in text
 
-anchor = "    private void processDeletedMessages(ArrayList<Integer> markAsDeletedMessages, long channelId, boolean sent) {"
-if anchor not in text:
-    print("processDeletedMessages not found")
-    raise SystemExit(1)
-text = text.replace(anchor, helper + anchor, 1)
-print("helper inserted")
+if "VichGramPrefs.isTurboMode" not in text:
+    text, n1 = re.subn(
+        r"(public boolean canDownloadMedia\(MessageObject messageObject\)\s*\{)",
+        r"""\1
+        // VichGram Turbo: always allow media download
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }""",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    print("msg", n1)
+    text, n2 = re.subn(
+        r"(public boolean canDownloadMedia\(int type, long size\)\s*\{)",
+        r"""\1
+        // VichGram Turbo: no size/type limits
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return true;
+        }""",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    print("type", n2)
+    text, n3 = re.subn(
+        r"(public int canDownloadMediaType\(MessageObject messageObject\)\s*\{)",
+        r"""\1
+        // VichGram Turbo
+        if (org.telegram.messenger.VichGramPrefs.isTurboMode()) {
+            return 2;
+        }""",
+        text,
+        count=1,
+        flags=re.M,
+    )
+    print("mediaType", n3)
+    TARGET.write_text(text, encoding="utf-8")
 
-# Call at end of didReceivedNotification_messagesDidLoad
-start = text.find("private void didReceivedNotification_messagesDidLoad")
-if start < 0:
-    print("messagesDidLoad not found")
-    raise SystemExit(1)
-next_priv = text.find("\n    private void ", start + 80)
-if next_priv < 0:
-    print("end of messagesDidLoad not found")
-    raise SystemExit(1)
-call = "\n        vichgramRestoreDeletedMessages();\n"
-if "vichgramRestoreDeletedMessages();" not in text[start:next_priv]:
-    text = text[:next_priv] + call + text[next_priv:]
-    print("call inserted")
-else:
-    print("call already present")
-
-path.write_text(text, encoding="utf-8")
+print("final size", TARGET.stat().st_size)
+print("hooks", TARGET.read_text(encoding="utf-8").count("isTurboMode"))
 print("done")
