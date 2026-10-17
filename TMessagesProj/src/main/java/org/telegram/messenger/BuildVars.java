@@ -1,11 +1,6 @@
 /*
- * This is the source code of Telegram for Android v. 7.x.x.
- * It is licensed under GNU GPL v. 2 or later.
- * You should have received a copy of the license in this archive (see LICENSE).
- *
- * Copyright Nikolai Kudashov, 2013-2020.
- *
- * Toloram fork: APP_ID / APP_HASH come from BuildConfig (CI secrets / local.properties).
+ * Based on Telegram for Android (GNU GPL v. 2 or later).
+ * VichGram fork: APP_ID / APP_HASH from BuildConfig (CI secrets).
  */
 
 package org.telegram.messenger;
@@ -28,11 +23,10 @@ public class BuildVars {
     public static boolean NO_SCOPED_STORAGE = Build.VERSION.SDK_INT <= 29;
     public static String BUILD_VERSION_STRING = BuildConfig.BUILD_VERSION_STRING;
 
-    // Toloram: filled at build time from secrets / gradle properties (never hardcode real keys here)
+    // VichGram: from BuildConfig (secrets VICHGRAM_TG_API_ID / VICHGRAM_TG_API_HASH at build time)
     public static int APP_ID = BuildConfig.TELEGRAM_API_ID;
     public static String APP_HASH = BuildConfig.TELEGRAM_API_HASH;
 
-    // SafetyNet key for Google Identity SDK, set it to empty to disable
     public static String SAFETYNET_KEY = "";
     public static String PLAYSTORE_APP_URL = "https://github.com/vpnxalala-glitch/Telegram";
     public static String HUAWEI_STORE_URL = "";
@@ -40,10 +34,8 @@ public class BuildVars {
 
     public static String HUAWEI_APP_ID = "";
 
-    // You can use this flag to disable Google Play Billing (If you're making fork and want it to be in Google Play)
     public static boolean IS_BILLING_UNAVAILABLE = true;
 
-    // works only on official app ids, disable on your forks
     public static boolean SUPPORTS_PASSKEYS = false;
 
     static {
@@ -90,7 +82,6 @@ public class BuildVars {
         }
         return betaApp;
     }
-
 
     public static boolean isHuaweiStoreApp() {
         return ApplicationLoader.isHuaweiStoreBuild();

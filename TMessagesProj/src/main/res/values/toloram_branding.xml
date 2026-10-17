@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Toloram branding overrides (takes priority over default Telegram strings) -->
-    <string name="AppName">Toloram</string>
-    <string name="AppNameBeta">Toloram Beta</string>
-    <string name="NotificationHiddenName">Toloram</string>
-    <string name="NotificationHiddenChatName">Toloram</string>
+    <!-- VichGram branding overrides -->
+    <string name="AppName">VichGram</string>
+    <string name="AppNameBeta">VichGram Beta</string>
+    <string name="NotificationHiddenName">VichGram</string>
+    <string name="NotificationHiddenChatName">VichGram</string>
 </resources>

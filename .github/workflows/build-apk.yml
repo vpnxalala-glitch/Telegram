@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: telegram-android-build-${{ github.ref }}
+  group: vichgram-android-build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,33 +44,23 @@ jobs:
           if [ -d "$ANDROID_HOME/ndk/27.2.12479018" ]; then
             echo "ndk.dir=$ANDROID_HOME/ndk/27.2.12479018" >> local.properties
           fi
-          cat local.properties
 
-      - name: Check Toloram API credentials
-        id: api_credentials
+      - name: Check VichGram API credentials
         env:
-          TOLORAM_TG_API_ID: ${{ secrets.TOLORAM_TG_API_ID }}
-          TOLORAM_TG_API_HASH: ${{ secrets.TOLORAM_TG_API_HASH }}
           VICHGRAM_TG_API_ID: ${{ secrets.VICHGRAM_TG_API_ID }}
           VICHGRAM_TG_API_HASH: ${{ secrets.VICHGRAM_TG_API_HASH }}
         run: |
-          ID="${TOLORAM_TG_API_ID:-$VICHGRAM_TG_API_ID}"
-          HASH="${TOLORAM_TG_API_HASH:-$VICHGRAM_TG_API_HASH}"
-          if [ -z "$ID" ] || [ -z "$HASH" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::API secrets missing in this repo. Add TOLORAM_TG_API_ID and TOLORAM_TG_API_HASH (or VICHGRAM_TG_*) in Settings → Secrets."
+          if [ -z "$VICHGRAM_TG_API_ID" ] || [ -z "$VICHGRAM_TG_API_HASH" ]; then
+            echo "::warning::Secrets VICHGRAM_TG_API_ID / VICHGRAM_TG_API_HASH are missing in THIS repo (Telegram). They do not copy from Ndjdj automatically."
           else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-            echo "Toloram API credentials found."
+            echo "VichGram API credentials found in this repo."
           fi
 
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build debug APK (Toloram)
+      - name: Build debug APK (VichGram)
         env:
-          TOLORAM_TG_API_ID: ${{ secrets.TOLORAM_TG_API_ID }}
-          TOLORAM_TG_API_HASH: ${{ secrets.TOLORAM_TG_API_HASH }}
           VICHGRAM_TG_API_ID: ${{ secrets.VICHGRAM_TG_API_ID }}
           VICHGRAM_TG_API_HASH: ${{ secrets.VICHGRAM_TG_API_HASH }}
         run: ./gradlew --no-daemon --stacktrace --warning-mode all assembleAfatDebug
@@ -79,7 +69,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: toloram-debug-apk
+          name: vichgram-debug-apk
           path: '**/build/outputs/apk/**/*.apk'
           if-no-files-found: warn
           retention-days: 14
